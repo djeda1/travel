@@ -143,7 +143,9 @@ function makeTexture() {
 
 export function createStage(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Исходные кадры 1280×720, поэтому рендер в разрешении ретины ничего не добавляет к картинке,
+  // но в 2–4 раза нагружает видеокарту.
+  renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   container.appendChild(renderer.domElement);
 
@@ -165,13 +167,56 @@ export function createStage(container) {
   scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
   const camera = new THREE.Camera();
 
-  const bind = (key, bitmap) => {
-    const tex = textures[key];
-    if (bitmap && tex.image !== bitmap) {
-      tex.image = bitmap;
-      tex.needsUpdate = true;
+  // Каждый кадр загружается в видеопамять один раз и живёт в небольшом LRU-кеше,
+  // а при скролле меняются только ссылки на текстуры. Новых загрузок — не больше двух за кадр,
+  // чтобы быстрый скролл не вызывал подтормаживаний.
+  const SLOTS = ['tA0', 'tA1', 'tB0', 'tB1'];
+  const MAX_GPU = 24;
+  const MAX_UPLOADS = 2;
+  const gpu = new Map();
+  let tick = 0;
+  let uploads = 0;
+
+  function evict() {
+    const inUse = new Set(SLOTS.map((s) => uniforms[s].value));
+    let oldestKey = null, oldest = null;
+    for (const [key, entry] of gpu) {
+      if (!inUse.has(entry.tex) && (!oldest || entry.used < oldest.used)) {
+        oldestKey = key;
+        oldest = entry;
+      }
     }
-  };
+    if (oldest) {
+      oldest.tex.dispose();
+      gpu.delete(oldestKey);
+    }
+  }
+
+  function texture(key, bitmap) {
+    const hit = gpu.get(key);
+    if (hit) {
+      hit.used = tick;
+      return hit.tex;
+    }
+    if (!bitmap || uploads >= MAX_UPLOADS) return null;
+    const tex = makeTexture();
+    tex.image = bitmap;
+    tex.needsUpdate = true;
+    renderer.initTexture(tex);
+    uploads++;
+    gpu.set(key, { tex, used: tick });
+    if (gpu.size > MAX_GPU) evict();
+    return tex;
+  }
+
+  // Привязывает пару кадров к слотам; смешивание только если обе текстуры актуальны.
+  function bind(s0, s1, sample) {
+    const t0 = texture(sample.keyA, sample.a);
+    const t1 = texture(sample.keyB, sample.b);
+    if (t0) uniforms[s0].value = t0;
+    uniforms[s1].value = t1 || uniforms[s0].value;
+    return t0 && t1 ? sample.mix : 0;
+  }
 
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
@@ -186,16 +231,10 @@ export function createStage(container) {
     uniforms,
     // a, b — результаты frameStore.sample(); mode/t — тип и прогресс перехода.
     render({ a, b, mode = 0, t = 0, time, mouse, zoom }) {
-      if (a) {
-        bind('tA0', a.a);
-        bind('tA1', a.b);
-        uniforms.uMixA.value = a.mix;
-      }
-      if (b) {
-        bind('tB0', b.a);
-        bind('tB1', b.b);
-        uniforms.uMixB.value = b.mix;
-      }
+      tick++;
+      uploads = 0;
+      if (a) uniforms.uMixA.value = bind('tA0', 'tA1', a);
+      if (b) uniforms.uMixB.value = bind('tB0', 'tB1', b);
       uniforms.uMode.value = mode;
       uniforms.uT.value = t;
       uniforms.uTime.value = time;

@@ -7,7 +7,7 @@ import PACKS from './packs.json';
 // только вокруг текущей позиции, чтобы не съесть видеопамять.
 
 const BASE = `${import.meta.env.BASE_URL}packs`;
-const KEEP = 18; // сколько декодированных кадров держать по обе стороны от текущего
+const KEEP = 12; // сколько декодированных кадров держать по обе стороны от текущего
 
 class Clip {
   constructor(name, count) {
@@ -119,7 +119,12 @@ export function createFrameStore(clips) {
       const b = clip.nearest(Math.min(clip.count - 1, i0 + 1));
       if (!a) return null;
       const exact = a.index === i0 && b && b.index === i0 + 1;
-      return { a: a.bitmap, b: (b || a).bitmap, mix: exact ? position - i0 : 0 };
+      const B = b || a;
+      return {
+        a: a.bitmap, b: B.bitmap,
+        keyA: `${name}:${a.index}`, keyB: `${name}:${B.index}`,
+        mix: exact ? position - i0 : 0,
+      };
     },
     // Освобождает декодированные кадры клипов, которые сейчас не нужны.
     keepOnly(names) {

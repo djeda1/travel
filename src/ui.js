@@ -102,17 +102,35 @@ export function initUI() {
   const loc = $('#locTitle');
   let lastLoc = -1;
 
+  const el = {
+    finale: $('#finale'), hero: $('#hero'), hint: $('#scrollHint'), bar: $('#progressBar'), scrim: $('#scrim'),
+  };
+  // Пишет стиль только при изменении, чтобы не дёргать раскладку страницы на каждом кадре.
+  const set = (node, prop, value) => {
+    node._s ??= {};
+    if (node._s[prop] !== value) {
+      node._s[prop] = value;
+      node.style[prop] = value;
+    }
+  };
+  let lastActive = -1;
+
   return {
     // active: индекс пункта маршрута; title: { index, opacity } для большого заголовка локации.
     update({ active, title, heroOpacity, finaleOpacity, progress }) {
-      $('#finale').style.opacity = finaleOpacity;
-      $('#finale').style.pointerEvents = finaleOpacity > 0.5 ? 'auto' : 'none';
-      rail.forEach((el, i) => el.classList.toggle('is-active', i === active));
-      top.forEach((el) => el.classList.toggle('is-active', +el.dataset.stop === active));
-      $('#hero').style.opacity = heroOpacity;
-      $('#hero').style.transform = `translateY(${(1 - heroOpacity) * -40}px)`;
-      $('#scrollHint').style.opacity = heroOpacity;
-      $('#progressBar').style.transform = `scaleX(${progress})`;
+      const f = finaleOpacity.toFixed(2), h = heroOpacity.toFixed(2), o = title.opacity.toFixed(2);
+      set(el.finale, 'opacity', f);
+      set(el.finale, 'visibility', finaleOpacity > 0.01 ? 'visible' : 'hidden');
+      set(el.finale, 'pointerEvents', finaleOpacity > 0.5 ? 'auto' : 'none');
+      if (active !== lastActive) {
+        rail.forEach((node, i) => node.classList.toggle('is-active', i === active));
+        top.forEach((node) => node.classList.toggle('is-active', +node.dataset.stop === active));
+        lastActive = active;
+      }
+      set(el.hero, 'opacity', h);
+      set(el.hero, 'transform', `translateY(${((1 - heroOpacity) * -40).toFixed(1)}px)`);
+      set(el.hint, 'opacity', h);
+      set(el.bar, 'transform', `scaleX(${progress.toFixed(4)})`);
       if (title.index !== lastLoc && title.index >= 0) {
         const l = LOCATIONS[title.index];
         loc.querySelector('.loc-title__index').textContent = `${l.index} / 03`;
@@ -121,9 +139,9 @@ export function initUI() {
         loc.querySelector('.loc-title__tagline').textContent = l.tagline;
         lastLoc = title.index;
       }
-      loc.style.opacity = title.opacity;
-      $('#scrim').style.opacity = title.opacity;
-      loc.style.transform = `translateY(${(1 - title.opacity) * 30}px)`;
+      set(loc, 'opacity', o);
+      set(el.scrim, 'opacity', o);
+      set(loc, 'transform', `translateY(${((1 - title.opacity) * 30).toFixed(1)}px)`);
     },
   };
 }

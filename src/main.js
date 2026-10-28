@@ -29,6 +29,14 @@ window.addEventListener('pointermove', (e) => {
   if (e.pointerType === 'mouse') mouseGoal.set(e.clientX / window.innerWidth - 0.5, 0.5 - e.clientY / window.innerHeight);
 });
 
+// Высоту трека кешируем: чтение offsetHeight на каждом кадре заставляет браузер пересчитывать раскладку.
+let trackEnd = 0;
+const measure = () => {
+  trackEnd = track.offsetHeight - window.innerHeight;
+};
+measure();
+window.addEventListener('resize', measure);
+
 const scrollVh = () => (window.scrollY / window.innerHeight) * 100;
 let vh = scrollVh();
 let last = performance.now();
@@ -75,7 +83,9 @@ function frame(now) {
   // Интерфейс: активный пункт, заголовки, герой и финал.
   const current = shot || (state.t > 0.5 ? state.to : state.from);
   let active = current.location !== undefined ? current.location + 1 : current.finale ? 4 : 0;
-  if (window.scrollY > track.offsetHeight - window.innerHeight * 0.6) active = 4;
+  if (window.scrollY > trackEnd + window.innerHeight * 0.4) active = 4;
+  // Насколько (в долях экрана) блок заявки уже въехал снизу.
+  const contactIn = Math.max(0, window.scrollY - trackEnd) / window.innerHeight;
   let title = { index: -1, opacity: 0 };
   if (shot?.title) {
     const [a, b] = shot.title;
@@ -85,7 +95,7 @@ function frame(now) {
     active,
     title,
     heroOpacity: shot?.hero ? 1 - smooth(0.02, 0.2, shotT) : 0,
-    finaleOpacity: shot?.finale ? smooth(0.3, 0.6, shotT) : 0,
+    finaleOpacity: shot?.finale ? smooth(0.3, 0.6, shotT) * (1 - smooth(0, 0.35, contactIn)) : 0,
     progress: Math.min(1, goal / TOTAL_VH),
   });
 

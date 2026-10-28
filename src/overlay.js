@@ -28,6 +28,16 @@ const RENDER = {
 };
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+// Пишет стиль только при изменении: лишние записи в DOM каждый кадр заставляют браузер
+// пересчитывать страницу и дают подтормаживания.
+function setStyle(el, prop, value) {
+  el._s ??= {};
+  if (el._s[prop] !== value) {
+    el._s[prop] = value;
+    el.style[prop] = value;
+  }
+}
 // Плавное появление/исчезновение внутри окна [from, to].
 const windowAlpha = (t, from, to, fade = 0.05) =>
   clamp(Math.min((t - from) / fade, (to - t) / fade), 0, 1);
@@ -43,7 +53,7 @@ export function createOverlay(root, stage) {
     el.className = 'pin';
     el.innerHTML = `<i></i><span>${label}</span>`;
     root.appendChild(el);
-    pins[id] = { el, x: 0, y: 0, vx: 0, shown: 0 };
+    pins[id] = { el, x: 0, y: 0, vx: 0, shown: 0, width: 0, flip: false };
   }
 
   const cards = {};
@@ -55,9 +65,18 @@ export function createOverlay(root, stage) {
       root.appendChild(el);
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       svg.appendChild(line);
-      cards[`${li}:${kind}`] = { el, line, tilt: 0 };
+      cards[`${li}:${kind}`] = { el, line, tilt: 0, w: 0, h: 0 };
     }
   });
+
+  // Размеры меток и карточек измеряем один раз (и заново при смене размера окна или шрифтов),
+  // а не на каждом кадре.
+  const remeasure = () => {
+    for (const pin of Object.values(pins)) pin.width = 0;
+    for (const card of Object.values(cards)) card.w = 0;
+  };
+  window.addEventListener('resize', remeasure);
+  document.fonts?.ready.then(remeasure);
 
   return {
     // shot — текущий шот таймлайна (или null во время перехода), t — его прогресс.
@@ -78,13 +97,16 @@ export function createOverlay(root, stage) {
           pin.vx = dt > 0 ? (s.x - pin.x) / dt : 0;
           pin.x = s.x;
           pin.y = s.y;
+          if (!pin.width) pin.width = pin.el.offsetWidth;
           // Подпись переносится влево от точки, если не помещается справа.
-          const width = pin.el.offsetWidth;
-          const flip = s.x + width + 16 > W;
-          pin.el.classList.toggle('pin--flip', flip);
-          pin.el.style.transform = `translate3d(${flip ? s.x - width : s.x}px, ${s.y}px, 0)`;
+          const flip = s.x + pin.width + 16 > W;
+          if (flip !== pin.flip) {
+            pin.flip = flip;
+            pin.el.classList.toggle('pin--flip', flip);
+          }
+          setStyle(pin.el, 'transform', `translate3d(${(flip ? s.x - pin.width : s.x).toFixed(1)}px, ${s.y.toFixed(1)}px, 0)`);
         }
-        pin.el.style.opacity = a.toFixed(3);
+        setStyle(pin.el, 'opacity', a.toFixed(2));
       }
 
       // Панели: летят из глубины, висят рядом с объектом и поворачиваются вместе с камерой.
@@ -94,13 +116,17 @@ export function createOverlay(root, stage) {
         const info = activeCards.get(key);
         const pin = info && pins[info.anchor];
         const a = info && pin.shown > 0 ? info.a : 0;
-        card.el.style.opacity = a.toFixed(3);
-        card.el.style.pointerEvents = a > 0.8 ? 'auto' : 'none';
-        card.el.style.visibility = a > 0.001 ? 'visible' : 'hidden';
-        card.line.style.opacity = (a * 0.9).toFixed(3);
+        setStyle(card.el, 'opacity', a.toFixed(2));
+        setStyle(card.el, 'pointerEvents', a > 0.8 ? 'auto' : 'none');
+        setStyle(card.el, 'visibility', a > 0.001 ? 'visible' : 'hidden');
+        setStyle(card.line, 'opacity', (a * 0.9).toFixed(2));
         if (a <= 0.001) continue;
 
-        const cw = card.el.offsetWidth, ch = card.el.offsetHeight;
+        if (!card.w) {
+          card.w = card.el.offsetWidth;
+          card.h = card.el.offsetHeight;
+        }
+        const cw = card.w, ch = card.h;
         let left, top, side;
         if (mobile) {
           left = (W - cw) / 2;
@@ -114,17 +140,16 @@ export function createOverlay(root, stage) {
         }
         card.tilt += (clamp(-pin.vx * 0.012, -10, 10) - card.tilt) * Math.min(1, dt * 4);
         const enter = 1 - a;
-        card.el.style.transform =
-          `translate3d(${left}px, ${top}px, 0) perspective(1400px) ` +
+        setStyle(card.el, 'transform',
+          `translate3d(${left.toFixed(1)}px, ${top.toFixed(1)}px, 0) perspective(1400px) ` +
           `rotateY(${(-side * 9 + card.tilt).toFixed(2)}deg) rotateX(${(enter * 14).toFixed(2)}deg) ` +
-          `translateZ(${(-enter * 260).toFixed(1)}px)`;
+          `translateZ(${(-enter * 260).toFixed(1)}px)`);
 
         const ex = mobile ? W / 2 : side > 0 ? left : left + cw;
         const ey = mobile ? top : top + Math.min(ch * 0.45, 120);
-        card.line.setAttribute('x1', pin.x);
-        card.line.setAttribute('y1', pin.y);
-        card.line.setAttribute('x2', ex);
-        card.line.setAttribute('y2', ey);
+        for (const [k, v] of [['x1', pin.x], ['y1', pin.y], ['x2', ex], ['y2', ey]]) {
+          card.line.setAttribute(k, v.toFixed(1));
+        }
       }
     },
   };
