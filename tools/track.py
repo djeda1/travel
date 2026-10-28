@@ -1,4 +1,4 @@
-"""Трекинг опорных точек на кадрах (OpenCV, оптический поток Лукаса-Канаде).
+"""Трекинг опорных точек на кадрах (читает public/packs, см. tools/pack_frames.py) (OpenCV, оптический поток Лукаса-Канаде).
 
 Для каждой метки задаётся кадр и координата (в пикселях 1280x720). Точка отслеживается
 вперёд и назад по последовательности; результат — нормализованные координаты 0..1
@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
-FRAMES = os.path.join(ROOT, 'public', 'frames')
+PACKS = os.path.join(ROOT, 'public', 'packs')
 
 ANCHORS = {
     'island': {'atoll': (1, 620, 316)},
@@ -22,8 +22,14 @@ LK = dict(winSize=(31, 31), maxLevel=4, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TE
 
 
 def load(clip):
-    files = sorted(f for f in os.listdir(os.path.join(FRAMES, clip)) if f.endswith('.webp'))
-    return [cv2.cvtColor(cv2.imread(os.path.join(FRAMES, clip, f)), cv2.COLOR_BGR2GRAY) for f in files]
+    # Кадры читаются из склеенного файла packs/<клип>.bin по индексу src/packs.json.
+    index = json.load(open(os.path.join(ROOT, 'src', 'packs.json')))[clip]
+    data = open(os.path.join(PACKS, f'{clip}.bin'), 'rb').read()
+    frames = [None] * len(index)
+    for frame, offset, length in index:
+        img = cv2.imdecode(np.frombuffer(data[offset:offset + length], np.uint8), cv2.IMREAD_GRAYSCALE)
+        frames[frame] = img
+    return frames
 
 
 def seed(gray, x, y, r=36):

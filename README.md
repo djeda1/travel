@@ -26,8 +26,8 @@ npm run build    # статическая сборка в dist/
 | --- | --- |
 | Тексты, цены, пакеты, контакты | `src/data.js` |
 | Порядок сцен, длина в скролле, когда показывать карточки и метки | `src/timeline.js` |
-| Кадры видео (WebP 1280×720) | `public/frames/<клип>/` |
-| Загрузка кадров (прогрессивная, с кешем вокруг текущего кадра) | `src/frames.js` |
+| Кадры видео: WebP 1280×720, склеены в один файл на клип | `public/packs/<клип>.bin` + индекс `src/packs.json` |
+| Потоковая загрузка кадров с кешем вокруг текущего кадра | `src/frames.js` |
 | WebGL-шейдер: смешивание кадров и переходы | `src/stage.js` |
 | Метки и 3D-карточки, привязанные к объектам | `src/overlay.js` |
 | Координаты объектов по кадрам (трекинг) | `src/tracks.json`, генерирует `tools/track.py` |
@@ -35,16 +35,21 @@ npm run build    # статическая сборка в dist/
 
 ### Как заменить видео
 
-1. Нарежьте ролик на кадры:
+1. Нарежьте ролик на кадры (папка `media/` в git не попадает):
    ```bash
-   ffmpeg -i video.mp4 -vf "fps=<N/длительность>,scale=1280:-2" -c:v libwebp -quality 62 public/frames/<имя>/%03d.webp
+   ffmpeg -i video.mp4 -vf "fps=<N/длительность>,scale=1280:-2" -c:v libwebp -quality 62 media/frames/<имя>/%03d.webp
    ```
-2. Укажите число кадров в `CLIPS` (`src/timeline.js`).
-3. Задайте объекты для меток в `ANCHORS` (`tools/track.py`): кадр и координаты в пикселях 1280×720. Затем запустите:
+2. Склейте кадры: `python3 tools/pack_frames.py media/frames`.
+3. Укажите число кадров в `CLIPS` (`src/timeline.js`).
+4. Задайте объекты для меток в `ANCHORS` (`tools/track.py`): кадр и координаты в пикселях 1280×720. Затем запустите:
    ```bash
    pip install opencv-python-headless numpy
    python3 tools/track.py
    ```
+
+## Деплой
+
+При каждом пуше в рабочую ветку GitHub Actions (`.github/workflows/deploy.yml`) собирает сайт и публикует его на GitHub Pages: https://djeda1.github.io/travel/
 
 ## Источники видео
 

@@ -1,62 +1,67 @@
+import PACKS from './packs.json';
+
 // Загрузка последовательностей кадров.
-// Сжатые файлы держим в памяти целиком (≈ 40 МБ на весь сайт), а декодированные ImageBitmap —
+// Кадры клипа склеены в один файл packs/<клип>.bin (см. tools/pack_frames.py) в прогрессивном
+// порядке и читаются потоком: кадр доступен, как только докачались его байты.
+// Сжатые кадры держим в памяти целиком (≈ 37 МБ на весь сайт), а декодированные ImageBitmap —
 // только вокруг текущей позиции, чтобы не съесть видеопамять.
 
-const BASE = `${import.meta.env.BASE_URL}frames`;
+const BASE = `${import.meta.env.BASE_URL}packs`;
 const KEEP = 18; // сколько декодированных кадров держать по обе стороны от текущего
 
 class Clip {
   constructor(name, count) {
     this.name = name;
     this.count = count;
+    this.index = PACKS[name];
     this.blobs = new Array(count);
     this.bitmaps = new Map();
     this.decoding = new Set();
     this.loaded = 0;
     this.started = false;
-    this.focus = 0;
   }
 
-  url(i) {
-    return `${BASE}/${this.name}/${String(i + 1).padStart(3, '0')}.webp`;
-  }
-
-  // Прогрессивная загрузка: сначала каждый 8-й кадр, затем 4-й, 2-й и остальные,
-  // чтобы скролл работал сразу, а плавность догружалась.
-  load(concurrency = 6) {
+  load() {
     if (this.started) return this.ready;
     this.started = true;
-    const order = [];
-    const seen = new Set();
-    for (const step of [8, 4, 2, 1]) {
-      for (let i = 0; i < this.count; i += step) {
-        if (!seen.has(i)) {
-          seen.add(i);
-          order.push(i);
-        }
-      }
-    }
-    if (!seen.has(this.count - 1)) order.push(this.count - 1);
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < order.length) {
-        const i = order[cursor++];
-        try {
-          const res = await fetch(this.url(i));
-          this.blobs[i] = await res.blob();
-          this.loaded++;
-        } catch (err) {
-          console.warn('Кадр не загрузился', this.url(i), err);
-        }
-      }
-    };
-    this.ready = Promise.all(Array.from({ length: concurrency }, worker));
+    this.ready = this.stream().catch((err) => console.warn('Клип не загрузился', this.name, err));
     // Первый кадр нужен сразу.
     this.first = (async () => {
       while (!this.blobs[0]) await new Promise((r) => setTimeout(r, 30));
       await this.decode(0);
     })();
     return this.ready;
+  }
+
+  async stream() {
+    const res = await fetch(`${BASE}/${this.name}.bin`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const last = this.index[this.index.length - 1];
+    const buffer = new Uint8Array(last[1] + last[2]);
+    let received = 0;
+    let next = 0; // следующий по порядку кадр в файле
+    const publish = () => {
+      while (next < this.index.length) {
+        const [frame, offset, length] = this.index[next];
+        if (offset + length > received) break;
+        this.blobs[frame] = new Blob([buffer.subarray(offset, offset + length)], { type: 'image/webp' });
+        this.loaded++;
+        next++;
+      }
+    };
+    if (!res.body) {
+      buffer.set(new Uint8Array(await res.arrayBuffer()));
+      received = buffer.length;
+      return publish();
+    }
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer.set(value, received);
+      received += value.length;
+      publish();
+    }
   }
 
   async decode(i) {
@@ -72,7 +77,6 @@ class Clip {
 
   // Готовит кадры вокруг позиции и освобождает далёкие.
   prepare(position) {
-    this.focus = position;
     const c = Math.round(position);
     for (let d = 0; d <= KEEP; d++) {
       for (const i of [c + d, c - d]) if (i >= 0 && i < this.count) this.decode(i);
