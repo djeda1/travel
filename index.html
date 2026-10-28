@@ -13,10 +13,11 @@
   <body>
     <div class="loader" id="loader">
       <span class="loader__logo">VOYAGE</span>
-      <span class="loader__bar"><i></i></span>
+      <span class="loader__bar"><i id="loaderBar"></i></span>
     </div>
 
     <div class="stage" id="stage"></div>
+    <div class="overlay" id="overlay"></div>
 
     <header class="topbar">
       <a href="#" class="logo" data-goto="0">VOYAGE<small>travel agency</small></a>
@@ -30,12 +31,19 @@
       <p class="hero__lead">Три направления, в которые влюбляются с первого взгляда. Листайте вниз — мы уже взлетаем.</p>
     </section>
 
+    <div class="scrim" id="scrim"></div>
     <div class="loc-title" id="locTitle" aria-live="polite">
       <span class="loc-title__index"></span>
       <h2 class="loc-title__name"></h2>
       <p class="loc-title__region"></p>
       <p class="loc-title__tagline"></p>
     </div>
+
+    <section class="finale" id="finale" aria-label="Финал">
+      <p class="hero__eyebrow">Следующая остановка — ваша</p>
+      <h2 class="finale__title">Куда полетим<br />дальше?</h2>
+      <button class="btn btn--accent btn--wide" data-book>Подобрать путешествие</button>
+    </section>
 
     <aside class="rail" aria-label="Маршрут" id="rail"></aside>
 
@@ -55,7 +63,7 @@
           </div>
           <form class="form" id="contactForm" novalidate></form>
         </div>
-        <footer class="footer">© <span id="year"></span> VOYAGE. Все цены указаны ориентировочно и зависят от дат.</footer>
+        <footer class="footer">© <span id="year"></span> VOYAGE. Все цены указаны ориентировочно и зависят от дат. Видео: Pexels.</footer>
       </section>
     </main>
 

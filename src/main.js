@@ -1,147 +1,109 @@
 import * as THREE from 'three';
-import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 import './style.css';
-import { createSky, createClouds, makeEnv } from './world/atmosphere.js';
-import { buildTropical } from './world/tropical.js';
-import { buildDesert } from './world/desert.js';
-import { buildAlps } from './world/alps.js';
-import { STATIONS, sample } from './journey.js';
-import { createPanels } from './panels.js';
+import { CLIPS, LAYOUT, TOTAL_VH, stateAt } from './timeline.js';
+import { createFrameStore } from './frames.js';
+import { createStage, MODES } from './stage.js';
+import { createOverlay } from './overlay.js';
 import { initUI } from './ui.js';
 
-const stage = document.getElementById('stage');
 const track = document.getElementById('track');
+track.style.height = `calc(${TOTAL_VH}vh + 100vh)`;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
-stage.appendChild(renderer.domElement);
-
-const cssRenderer = new CSS3DRenderer();
-cssRenderer.domElement.className = 'css3d';
-stage.appendChild(cssRenderer.domElement);
-
-const scene = new THREE.Scene();
-const cssScene = new THREE.Scene();
-scene.fog = new THREE.FogExp2('#ffffff', 0.001);
-const camera = new THREE.PerspectiveCamera(50, 1, 1, 6000);
-
-const sky = createSky();
-scene.add(sky.mesh);
-const hemi = new THREE.HemisphereLight('#ffffff', '#444444', 1.1);
-const sun = new THREE.DirectionalLight('#ffffff', 2.5);
-scene.add(hemi, sun, sun.target);
-
-// Три локации живут в одной сцене, далеко друг от друга; между ними камера летит сквозь облака.
-const zones = [buildTropical(STATIONS[0].center), buildDesert(STATIONS[1].center), buildAlps(STATIONS[2].center)];
-zones.forEach((z) => scene.add(z.group));
-
-const mid = (a, b) => STATIONS[a].center.clone().lerp(STATIONS[b].center, 0.5);
-scene.add(createClouds([
-  { center: new THREE.Vector3(0, 0, 500), size: { x: 3600, z: 2600 }, y: [240, 330], count: 190, scale: [110, 230] },
-  { center: mid(0, 1), size: { x: 2200, z: 2200 }, y: [200, 360], count: 110, scale: [120, 240] },
-  { center: mid(1, 2), size: { x: 2200, z: 2200 }, y: [200, 360], count: 110, scale: [120, 240] },
-  { center: STATIONS[2].center.clone().add(new THREE.Vector3(0, 0, -300)), size: { x: 3200, z: 2600 }, y: [330, 390], count: 150, scale: [110, 220] },
-]));
-
-const panels = createPanels(cssScene);
+const stage = createStage(document.getElementById('stage'));
+const frames = createFrameStore(CLIPS);
+const overlay = createOverlay(document.getElementById('overlay'), stage);
 const ui = initUI();
 
-function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
-  camera.aspect = w / h;
-  // На портретных экранах шире угол обзора, чтобы локация помещалась целиком.
-  camera.fov = camera.aspect < 1 ? 68 : 50;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
-  cssRenderer.setSize(w, h);
-  panels.resize(camera);
-}
-window.addEventListener('resize', resize);
-resize();
-
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const env = makeEnv();
-const target = new THREE.Vector3();
-const pointer = new THREE.Vector2();
-const sway = new THREE.Vector2();
+const smooth = (a, b, x) => THREE.MathUtils.smoothstep(x, a, b);
+
+// Кадры грузим по порядку маршрута; текущую локацию — вне очереди.
+const order = LAYOUT.filter((e) => e.shot).map((e) => e.shot);
+(async () => {
+  for (const name of order) await frames.get(name).load();
+})();
+
+const mouse = new THREE.Vector2();
+const mouseGoal = new THREE.Vector2();
 window.addEventListener('pointermove', (e) => {
-  pointer.set(e.clientX / window.innerWidth - 0.5, e.clientY / window.innerHeight - 0.5);
+  if (e.pointerType === 'mouse') mouseGoal.set(e.clientX / window.innerWidth - 0.5, 0.5 - e.clientY / window.innerHeight);
 });
 
-const scrollProgress = () => {
-  const max = track.offsetHeight - window.innerHeight;
-  return Math.min(1, Math.max(0, window.scrollY / max));
-};
-let progress = scrollProgress();
-const clock = new THREE.Clock();
+const scrollVh = () => (window.scrollY / window.innerHeight) * 100;
+let vh = scrollVh();
+let last = performance.now();
 
-function frame() {
-  const dt = Math.min(clock.getDelta(), 0.1);
-  const t = clock.elapsedTime;
-  // Плавное «догоняющее» движение камеры за скроллом.
-  const goal = scrollProgress();
-  progress += (goal - progress) * (reduceMotion ? 1 : 1 - Math.exp(-dt * 3.2));
-  if (Math.abs(goal - progress) < 1e-5) progress = goal;
+const framePos = (entry, t) => t * (CLIPS[entry.shot].frames - 1);
 
-  const { seg, t: segT, k } = sample(progress, camera.position, target, env);
-  // Лёгкое «дыхание» камеры и реакция на курсор.
-  if (!reduceMotion) {
-    sway.lerp(pointer, 1 - Math.exp(-dt * 2));
-    camera.position.y += Math.sin(t * 0.6) * 0.8;
-    target.x += sway.x * 14;
-    target.y -= sway.y * 8;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  const time = now / 1000;
+
+  // Камера «догоняет» скролл с инерцией — движение получается киношным, без рывков.
+  const goal = Math.min(scrollVh(), TOTAL_VH - 0.01);
+  vh += (goal - vh) * (reduceMotion ? 1 : 1 - Math.exp(-dt * 4));
+  if (Math.abs(goal - vh) < 0.01) vh = goal;
+  if (!reduceMotion) mouse.lerp(mouseGoal, 1 - Math.exp(-dt * 2.5));
+  const zoom = 1.05 + (reduceMotion ? 0 : Math.sin(time * 0.25) * 0.008);
+
+  const state = stateAt(vh);
+  let render;
+  let shot = null, shotT = 0, pos = 0;
+  if (state.kind === 'shot') {
+    shot = state.entry;
+    shotT = state.t;
+    pos = framePos(shot, shotT);
+    frames.get(shot.shot).load();
+    render = { a: frames.sample(shot.shot, pos), mode: MODES.none };
+    frames.keepOnly([shot.shot]);
+  } else {
+    const { from, to, type, t } = state;
+    frames.get(from.shot).load();
+    frames.get(to.shot).load();
+    render = {
+      a: frames.sample(from.shot, CLIPS[from.shot].frames - 1),
+      b: frames.sample(to.shot, 0),
+      mode: MODES[type],
+      t,
+    };
+    frames.keepOnly([from.shot, to.shot]);
   }
-  camera.lookAt(target);
+  stage.render({ ...render, time, mouse, zoom });
+  overlay.update(shot, shotT, pos, mouse, zoom, dt);
 
-  sky.mesh.position.copy(camera.position);
-  sky.uniforms.top.value.copy(env.top);
-  sky.uniforms.horizon.value.copy(env.horizon);
-  sky.uniforms.bottom.value.copy(env.bottom);
-  sky.uniforms.sunColor.value.copy(env.sunColor);
-  sky.uniforms.sunDir.value.copy(env.sun);
-  scene.fog.color.copy(env.horizon);
-  scene.fog.density = env.fog;
-  sun.color.copy(env.light);
-  sun.intensity = env.lightI;
-  sun.position.copy(camera.position).addScaledVector(env.sun, 500);
-  sun.target.position.copy(camera.position);
-  hemi.color.copy(env.hemiSky);
-  hemi.groundColor.copy(env.hemiGround);
-
-  // Рисуем только локации рядом с камерой.
-  zones.forEach((z, i) => {
-    z.group.visible = camera.position.distanceTo(STATIONS[i].center) < 2600;
-    if (z.group.visible) z.update(t);
-  });
-
-  const orbit = seg.type === 'orbit';
-  panels.update(orbit ? seg.station : -1, orbit ? k : null);
-
-  // HUD: активный пункт маршрута и большой заголовок локации.
+  // Интерфейс: активный пункт, заголовки, герой и финал.
+  const current = shot || (state.t > 0.5 ? state.to : state.from);
+  let active = current.location !== undefined ? current.location + 1 : current.finale ? 4 : 0;
+  if (window.scrollY > track.offsetHeight - window.innerHeight * 0.6) active = 4;
   let title = { index: -1, opacity: 0 };
-  if (orbit) title = { index: seg.station, opacity: 1 - THREE.MathUtils.smoothstep(segT, 0.06, 0.13) };
-  else if (seg.type === 'fly') title = { index: seg.b, opacity: THREE.MathUtils.smoothstep(segT, 0.82, 1) };
-  else if (seg.type === 'intro') title = { index: 0, opacity: THREE.MathUtils.smoothstep(segT, 0.85, 1) };
-  let active = 0;
-  if (orbit) active = seg.station + 1;
-  else if (seg.type === 'fly') active = segT > 0.5 ? seg.b + 1 : seg.a + 1;
-  else if (seg.type === 'outro') active = segT > 0.5 ? 4 : 3;
-  if (window.scrollY > track.offsetHeight - window.innerHeight * 0.5) active = 4;
+  if (shot?.title) {
+    const [a, b] = shot.title;
+    title = { index: shot.location, opacity: Math.min(smooth(a, a + 0.06, shotT), 1 - smooth(b - 0.08, b, shotT)) };
+  }
   ui.update({
     active,
     title,
-    heroOpacity: 1 - THREE.MathUtils.smoothstep(progress, 0.005, 0.035),
-    progress: goal,
+    heroOpacity: shot?.hero ? 1 - smooth(0.02, 0.2, shotT) : 0,
+    finaleOpacity: shot?.finale ? smooth(0.3, 0.6, shotT) : 0,
+    progress: Math.min(1, goal / TOTAL_VH),
   });
 
-  renderer.render(scene, camera);
-  cssRenderer.render(cssScene, camera);
   requestAnimationFrame(frame);
 }
 
-requestAnimationFrame(() => {
-  frame();
-  document.getElementById('loader').classList.add('is-hidden');
+// Ждём первый клип (небо над облаками), затем убираем экран загрузки.
+const first = frames.get(order[0]);
+const bar = document.getElementById('loaderBar');
+const tick = setInterval(() => {
+  bar.style.transform = `scaleX(${first.loaded / first.count})`;
+}, 100);
+first.load().then(async () => {
+  await first.first;
+  clearInterval(tick);
+  requestAnimationFrame((t) => {
+    last = t;
+    frame(t);
+    document.getElementById('loader').classList.add('is-hidden');
+  });
 });

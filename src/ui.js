@@ -1,5 +1,5 @@
 import { AGENCY, LOCATIONS } from './data.js';
-import { stationProgress } from './journey.js';
+import { locationStart } from './timeline.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -41,18 +41,17 @@ function bindForm(form) {
   });
 }
 
-export function scrollToProgress(p) {
-  const track = $('#track');
-  window.scrollTo({ top: p * (track.offsetHeight - window.innerHeight), behavior: 'smooth' });
+export function scrollToVh(vh) {
+  window.scrollTo({ top: (vh / 100) * window.innerHeight, behavior: 'smooth' });
 }
 
 export function initUI() {
   const stops = [
     { label: 'Старт', p: 0 },
-    ...LOCATIONS.map((l, i) => ({ label: l.name, p: stationProgress(i) })),
+    ...LOCATIONS.map((l, i) => ({ label: l.name, p: locationStart(i) })),
     { label: 'Заявка', p: 'contact' },
   ];
-  const go = (p) => (p === 'contact' ? $('#contact').scrollIntoView({ behavior: 'smooth' }) : scrollToProgress(p));
+  const go = (p) => (p === 'contact' ? $('#contact').scrollIntoView({ behavior: 'smooth' }) : scrollToVh(p));
 
   $('#rail').innerHTML = stops.map((s, i) =>
     `<button class="rail__item" data-stop="${i}"><i></i><span>${s.label}</span></button>`).join('');
@@ -105,7 +104,9 @@ export function initUI() {
 
   return {
     // active: индекс пункта маршрута; title: { index, opacity } для большого заголовка локации.
-    update({ active, title, heroOpacity, progress }) {
+    update({ active, title, heroOpacity, finaleOpacity, progress }) {
+      $('#finale').style.opacity = finaleOpacity;
+      $('#finale').style.pointerEvents = finaleOpacity > 0.5 ? 'auto' : 'none';
       rail.forEach((el, i) => el.classList.toggle('is-active', i === active));
       top.forEach((el) => el.classList.toggle('is-active', +el.dataset.stop === active));
       $('#hero').style.opacity = heroOpacity;
@@ -121,6 +122,7 @@ export function initUI() {
         lastLoc = title.index;
       }
       loc.style.opacity = title.opacity;
+      $('#scrim').style.opacity = title.opacity;
       loc.style.transform = `translateY(${(1 - title.opacity) * 30}px)`;
     },
   };
