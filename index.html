@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VOYAGE — путешествия, которые запоминаются</title>
+    <meta name="description" content="Туристическое агентство VOYAGE: Мальдивы, Египет и Швейцарские Альпы. Авторские туры под ключ." />
+    <meta name="theme-color" content="#1b2452" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="loader" id="loader">
+      <span class="loader__logo">VOYAGE</span>
+      <span class="loader__bar"><i></i></span>
+    </div>
+
+    <div class="stage" id="stage"></div>
+
+    <header class="topbar">
+      <a href="#" class="logo" data-goto="0">VOYAGE<small>travel agency</small></a>
+      <nav class="topbar__nav" aria-label="Направления" id="topnav"></nav>
+      <button class="btn btn--light" data-book>Подобрать тур</button>
+    </header>
+
+    <section class="hero" id="hero" aria-label="Главный экран">
+      <p class="hero__eyebrow">Авторские путешествия · с 2012 года</p>
+      <h1 class="hero__title">Открой<br /><span>мир</span></h1>
+      <p class="hero__lead">Три направления, в которые влюбляются с первого взгляда. Листайте вниз — мы уже взлетаем.</p>
+    </section>
+
+    <div class="loc-title" id="locTitle" aria-live="polite">
+      <span class="loc-title__index"></span>
+      <h2 class="loc-title__name"></h2>
+      <p class="loc-title__region"></p>
+      <p class="loc-title__tagline"></p>
+    </div>
+
+    <aside class="rail" aria-label="Маршрут" id="rail"></aside>
+
+    <div class="scroll-hint" id="scrollHint"><span>Листайте</span><i></i></div>
+    <div class="progress"><i id="progressBar"></i></div>
+
+    <main>
+      <div class="track" id="track"></div>
+
+      <section class="contact" id="contact">
+        <div class="contact__inner">
+          <div>
+            <p class="contact__eyebrow">Следующая остановка — ваша</p>
+            <h2 class="contact__title">Готовы<br />к путешествию?</h2>
+            <p class="contact__lead">Оставьте заявку — менеджер подберёт даты, перелёт и отель под ваш бюджет и перезвонит в течение 15 минут.</p>
+            <ul class="contact__list" id="contactList"></ul>
+          </div>
+          <form class="form" id="contactForm" novalidate></form>
+        </div>
+        <footer class="footer">© <span id="year"></span> VOYAGE. Все цены указаны ориентировочно и зависят от дат.</footer>
+      </section>
+    </main>
+
+    <dialog class="modal" id="bookModal" aria-labelledby="bookTitle">
+      <button class="modal__close" data-close aria-label="Закрыть">×</button>
+      <h2 class="modal__title" id="bookTitle">Заявка на тур</h2>
+      <form class="form" id="bookForm" novalidate></form>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
