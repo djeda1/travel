@@ -41,17 +41,14 @@ function bindForm(form) {
   });
 }
 
-export function scrollToVh(vh) {
-  window.scrollTo({ top: (vh / 100) * window.innerHeight, behavior: 'smooth' });
-}
-
-export function initUI() {
+// nav — пошаговый навигатор камеры (src/navigator.js).
+export function initUI(nav) {
   const stops = [
     { label: 'Старт', p: 0 },
     ...LOCATIONS.map((l, i) => ({ label: l.name, p: locationStart(i) })),
     { label: 'Заявка', p: 'contact' },
   ];
-  const go = (p) => (p === 'contact' ? $('#contact').scrollIntoView({ behavior: 'smooth' }) : scrollToVh(p));
+  const go = (p) => (p === 'contact' ? nav.toContact() : nav.goToVh(p));
 
   $('#rail').innerHTML = stops.map((s, i) =>
     `<button class="rail__item" data-stop="${i}"><i></i><span>${s.label}</span></button>`).join('');

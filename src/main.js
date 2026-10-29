@@ -5,6 +5,7 @@ import { createFrameStore } from './frames.js';
 import { createStage, MODES } from './stage.js';
 import { createOverlay } from './overlay.js';
 import { initUI } from './ui.js';
+import { createNavigator } from './navigator.js';
 
 const track = document.getElementById('track');
 track.style.height = `calc(${TOTAL_VH}vh + 100vh)`;
@@ -12,7 +13,9 @@ track.style.height = `calc(${TOTAL_VH}vh + 100vh)`;
 const stage = createStage(document.getElementById('stage'));
 const frames = createFrameStore(CLIPS);
 const overlay = createOverlay(document.getElementById('overlay'), stage);
-const ui = initUI();
+const nav = createNavigator(track);
+const ui = initUI(nav);
+window.scrollTo(0, 0);
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const smooth = (a, b, x) => THREE.MathUtils.smoothstep(x, a, b);
@@ -48,9 +51,10 @@ function frame(now) {
   last = now;
   const time = now / 1000;
 
-  // Камера «догоняет» скролл с инерцией — движение получается киношным, без рывков.
+  // Навигатор плавно ведёт скролл к точке остановки, а камера ещё мягко его догоняет.
+  nav.tick(now);
   const goal = Math.min(scrollVh(), TOTAL_VH - 0.01);
-  vh += (goal - vh) * (reduceMotion ? 1 : 1 - Math.exp(-dt * 4));
+  vh += (goal - vh) * (reduceMotion ? 1 : 1 - Math.exp(-dt * 7));
   if (Math.abs(goal - vh) < 0.01) vh = goal;
   if (!reduceMotion) mouse.lerp(mouseGoal, 1 - Math.exp(-dt * 2.5));
   const zoom = 1.05 + (reduceMotion ? 0 : Math.sin(time * 0.25) * 0.008);

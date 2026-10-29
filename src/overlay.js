@@ -134,7 +134,10 @@ export function createOverlay(root, stage) {
           side = 0;
         } else {
           side = pin.x < W * 0.55 ? 1 : -1;
-          left = side > 0 ? pin.x + 90 : pin.x - 90 - cw;
+          // Карточка встаёт за подписью метки, а не поверх неё.
+          const labelOnCardSide = side > 0 ? !pin.flip : pin.flip;
+          const gap = labelOnCardSide ? pin.width + 28 : 90;
+          left = side > 0 ? pin.x + gap : pin.x - gap - cw;
           left = clamp(left, 24, W - cw - 80);
           top = clamp(pin.y - ch * 0.45, 96, H - ch - 32);
         }
